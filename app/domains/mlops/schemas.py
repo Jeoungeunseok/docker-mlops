@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -52,6 +52,19 @@ class TrainingResult(BaseModel):
     promoted: bool = False
 
 
+class TrainingJobRecord(BaseModel):
+    job_id: str
+    status: Literal["pending", "running", "succeeded", "failed"]
+    context: TrainingContext
+    attempts: int = 0
+    max_attempts: int = 1
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    result: TrainingResult | None = None
+    error_message: str | None = None
+
+
 class TrainingDataset(BaseModel):
     train_features: Any
     train_labels: Any | None = None
@@ -66,6 +79,15 @@ class ModelLoadResult(BaseModel):
     version: str | None = None
     run_id: str | None = None
     loaded_at: datetime
+
+
+class ModelRollbackRequest(BaseModel):
+    version: str
+
+
+class ModelRollbackResult(BaseModel):
+    model_name: str
+    champion_version: str
 
 
 class PredictionLogPayload(BaseModel):

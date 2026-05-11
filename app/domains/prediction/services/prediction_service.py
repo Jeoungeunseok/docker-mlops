@@ -3,6 +3,7 @@ from datetime import datetime
 from app.core.logging import app_logger
 from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.model_loader import model_loader
+from app.domains.mlops.registry import prediction_input_validator_registry
 from app.domains.mlops.schemas import PredictionLogPayload
 from app.domains.prediction.log_store import prediction_log_store
 from app.domains.prediction.schemas import PredictionActualUpdateRequest, PredictionRequest, PredictionResponse
@@ -10,6 +11,7 @@ from app.domains.prediction.schemas import PredictionActualUpdateRequest, Predic
 
 def predict(request: PredictionRequest) -> PredictionResponse:
     app_logger.info("Running prediction", extra={"model_name": request.model_name})
+    _validate_prediction_inputs(request)
     load_info = model_loader.load(request.model_name)
     predictions = model_loader.predict(request.model_name, request.inputs)
     predicted_at = now_in_app_timezone()
@@ -21,6 +23,14 @@ def predict(request: PredictionRequest) -> PredictionResponse:
             "model_version": load_info.version,
             "run_id": load_info.run_id,
         },
+    )
+    return PredictionResponse(
+        model_name=request.model_name,
+        model_version=load_info.version,
+        run_id=load_info.run_id,
+        request_id=request.request_id,
+        predicted_at=predicted_at,
+        predictions=predictions,
     )
 
 
@@ -35,14 +45,16 @@ def update_prediction_actual(request_id: str, request: PredictionActualUpdateReq
 
 def list_prediction_logs(model_name: str) -> list[PredictionLogPayload]:
     return prediction_log_store.list_by_model(model_name)
-    return PredictionResponse(
-        model_name=request.model_name,
-        model_version=load_info.version,
-        run_id=load_info.run_id,
-        request_id=request.request_id,
-        predicted_at=predicted_at,
-        predictions=predictions,
-    )
+
+
+def _validate_prediction_inputs(request: PredictionRequest) -> None:
+    model_type = request.model_name.split("_", 1)[0]
+    try:
+        validator = prediction_input_validator_registry.get(model_type)
+    except KeyError:
+        app_logger.info("Prediction input validator was not registered", extra={"model_type": model_type})
+        return
+    validator.validate(request.inputs)
 
 
 def _save_prediction_log(

@@ -4,8 +4,17 @@ from fastapi.concurrency import run_in_threadpool
 from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
 from app.domains.mlops.model_loader import model_loader
-from app.domains.mlops.model_registry import get_model_by_alias
-from app.domains.mlops.schemas import ModelLoadResult, ModelRegistryInfo, TrainingContext, TrainingResult
+from app.domains.mlops.model_registry import get_model_by_alias, rollback_champion
+from app.domains.mlops.schemas import (
+    ModelLoadResult,
+    ModelRegistryInfo,
+    ModelRollbackRequest,
+    ModelRollbackResult,
+    TrainingContext,
+    TrainingJobRecord,
+    TrainingResult,
+)
+from app.domains.mlops.training_jobs import training_job_runner
 from app.jobs.train_model_job import train_model_job
 
 router = APIRouter()
@@ -28,6 +37,35 @@ async def create_training_job(context: TrainingContext) -> TrainingResult:
     except Exception as exc:
         app_logger.exception("Training job failed", extra={"model_type": context.model_type})
         raise HTTPException(status_code=502, detail=f"Failed to run training job: {exc}") from exc
+
+
+@router.post("/training-jobs/async", response_model=TrainingJobRecord, status_code=202)
+async def submit_async_training_job(context: TrainingContext, max_attempts: int = 1) -> TrainingJobRecord:
+    app_logger.info(
+        "Submitting async training job from API",
+        extra={"model_type": context.model_type, "target_type": context.target_type, "target_id": context.target_id},
+    )
+    if max_attempts < 1:
+        raise HTTPException(status_code=400, detail="max_attempts must be greater than or equal to 1.")
+    return await run_in_threadpool(training_job_runner.submit, context, max_attempts)
+
+
+@router.get("/training-jobs/{job_id}", response_model=TrainingJobRecord)
+async def get_training_job(job_id: str) -> TrainingJobRecord:
+    job = await run_in_threadpool(training_job_runner.get, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Training job was not found.")
+    return job
+
+
+@router.post("/training-jobs/{job_id}/retry", response_model=TrainingJobRecord, status_code=202)
+async def retry_training_job(job_id: str) -> TrainingJobRecord:
+    try:
+        return await run_in_threadpool(training_job_runner.retry, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.get("/models/{model_name}", response_model=ModelRegistryInfo)
@@ -66,3 +104,16 @@ async def reload_model(model_name: str) -> ModelLoadResult:
     except Exception as exc:
         app_logger.exception("Model reload failed", extra={"model_name": model_name})
         raise HTTPException(status_code=502, detail=f"Failed to reload model: {exc}") from exc
+
+
+@router.post("/models/{model_name}/rollback", response_model=ModelRollbackResult)
+async def rollback_model(model_name: str, request: ModelRollbackRequest) -> ModelRollbackResult:
+    app_logger.info("Rolling back champion model", extra={"model_name": model_name, "version": request.version})
+    try:
+        return await run_in_threadpool(rollback_champion, model_name, request.version)
+    except Exception as exc:
+        app_logger.exception(
+            "Model rollback failed",
+            extra={"model_name": model_name, "version": request.version},
+        )
+        raise HTTPException(status_code=502, detail=f"Failed to rollback model: {exc}") from exc

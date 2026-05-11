@@ -4,6 +4,7 @@ from typing import Any
 from app.domains.mlops.schemas import ModelLoadResult, PredictionLogPayload
 from app.domains.prediction.schemas import PredictionRequest
 from app.domains.prediction.services import prediction_service
+from app.domains.prediction.validation import RequiredFieldsValidator
 
 
 class DummyModelLoader:
@@ -61,3 +62,23 @@ def test_predict_returns_model_metadata_and_saves_prediction_log(monkeypatch: An
     assert len(log_store.payloads) == 1
     assert log_store.payloads[0].request_id == "req-1"
     assert log_store.payloads[0].input_features == {"inputs": [{"x": 1}]}
+
+
+def test_predict_validates_inputs_when_validator_is_registered(monkeypatch: Any) -> None:
+    class DummyValidatorRegistry:
+        def get(self, model_type: str) -> RequiredFieldsValidator:
+            assert model_type == "forecast"
+            return RequiredFieldsValidator({"x"})
+
+    monkeypatch.setattr(prediction_service, "prediction_input_validator_registry", DummyValidatorRegistry())
+    monkeypatch.setattr(prediction_service, "model_loader", DummyModelLoader())
+
+    response = prediction_service.predict(
+        PredictionRequest(
+            model_name="forecast_global",
+            request_id="req-1",
+            inputs=[{"x": 1}],
+        )
+    )
+
+    assert response.predictions == [1.25]

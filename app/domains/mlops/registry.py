@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import Generic, TypeVar
 
 from app.domains.mlops.schemas import ModelTrainer, TrainingDataProcessor
+from app.domains.prediction.validation import PredictionInputValidator
 
 T = TypeVar("T")
 
@@ -31,3 +32,4 @@ def _normalize_model_type(model_type: str) -> str:
 
 trainer_registry: ModelTypeRegistry[ModelTrainer] = ModelTypeRegistry()
 data_processor_registry: ModelTypeRegistry[TrainingDataProcessor] = ModelTypeRegistry()
+prediction_input_validator_registry: ModelTypeRegistry[PredictionInputValidator] = ModelTypeRegistry()

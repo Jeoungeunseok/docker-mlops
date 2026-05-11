@@ -3,7 +3,7 @@ from mlflow import MlflowClient
 
 from app.core.logging import app_logger
 from app.domains.mlops.config import mlops_settings
-from app.domains.mlops.schemas import EvaluationMetrics, ModelRegistryInfo
+from app.domains.mlops.schemas import EvaluationMetrics, ModelRegistryInfo, ModelRollbackResult
 
 
 def build_model_name(
@@ -71,6 +71,15 @@ def promote_to_champion(model_name: str, version: str) -> None:
         "Model promoted to champion",
         extra={"model_name": model_name, "model_version": version},
     )
+
+
+def rollback_champion(model_name: str, version: str) -> ModelRollbackResult:
+    set_alias(model_name, version, mlops_settings.model_champion_alias)
+    app_logger.info(
+        "Model champion rolled back",
+        extra={"model_name": model_name, "model_version": version},
+    )
+    return ModelRollbackResult(model_name=model_name, champion_version=version)
 
 
 def get_model_by_alias(model_name: str, alias: str | None = None) -> ModelRegistryInfo | None:
