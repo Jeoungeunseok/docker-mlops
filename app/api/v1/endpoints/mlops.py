@@ -5,9 +5,29 @@ from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.model_registry import get_model_by_alias
-from app.domains.mlops.schemas import ModelLoadResult, ModelRegistryInfo
+from app.domains.mlops.schemas import ModelLoadResult, ModelRegistryInfo, TrainingContext, TrainingResult
+from app.jobs.train_model_job import train_model_job
 
 router = APIRouter()
+
+
+@router.post("/training-jobs", response_model=TrainingResult)
+async def create_training_job(context: TrainingContext) -> TrainingResult:
+    app_logger.info(
+        "Starting training job from API",
+        extra={"model_type": context.model_type, "target_type": context.target_type, "target_id": context.target_id},
+    )
+    try:
+        return await run_in_threadpool(train_model_job, context)
+    except KeyError as exc:
+        app_logger.warning(
+            "Training job failed because model_type is not registered",
+            extra={"model_type": context.model_type},
+        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        app_logger.exception("Training job failed", extra={"model_type": context.model_type})
+        raise HTTPException(status_code=502, detail=f"Failed to run training job: {exc}") from exc
 
 
 @router.get("/models/{model_name}", response_model=ModelRegistryInfo)
