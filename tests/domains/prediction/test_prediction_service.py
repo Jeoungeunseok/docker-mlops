@@ -27,6 +27,18 @@ class CapturingPredictionLogStore:
     def save(self, payload: PredictionLogPayload) -> None:
         self.payloads.append(payload)
 
+    def update_actual(
+        self,
+        request_id: str,
+        actual_value: object,
+        error_value: float | None = None,
+        error_metrics: dict[str, float] | None = None,
+    ) -> None:
+        pass
+
+    def list_by_model(self, model_name: str) -> list[PredictionLogPayload]:
+        return [payload for payload in self.payloads if payload.model_name == model_name]
+
 
 def test_predict_returns_model_metadata_and_saves_prediction_log(monkeypatch: Any) -> None:
     log_store = CapturingPredictionLogStore()

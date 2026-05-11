@@ -21,3 +21,9 @@ class PredictionResponse(BaseModel):
     request_id: str | None = None
     predicted_at: datetime
     predictions: Any
+
+
+class PredictionActualUpdateRequest(BaseModel):
+    actual_value: Any
+    error_value: float | None = None
+    error_metrics: dict[str, float] = Field(default_factory=dict)

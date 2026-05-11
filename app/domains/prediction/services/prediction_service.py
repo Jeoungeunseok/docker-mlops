@@ -5,7 +5,7 @@ from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.schemas import PredictionLogPayload
 from app.domains.prediction.log_store import prediction_log_store
-from app.domains.prediction.schemas import PredictionRequest, PredictionResponse
+from app.domains.prediction.schemas import PredictionActualUpdateRequest, PredictionRequest, PredictionResponse
 
 
 def predict(request: PredictionRequest) -> PredictionResponse:
@@ -22,6 +22,19 @@ def predict(request: PredictionRequest) -> PredictionResponse:
             "run_id": load_info.run_id,
         },
     )
+
+
+def update_prediction_actual(request_id: str, request: PredictionActualUpdateRequest) -> None:
+    prediction_log_store.update_actual(
+        request_id=request_id,
+        actual_value=request.actual_value,
+        error_value=request.error_value,
+        error_metrics=request.error_metrics,
+    )
+
+
+def list_prediction_logs(model_name: str) -> list[PredictionLogPayload]:
+    return prediction_log_store.list_by_model(model_name)
     return PredictionResponse(
         model_name=request.model_name,
         model_version=load_info.version,

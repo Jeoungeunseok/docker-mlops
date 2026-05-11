@@ -17,6 +17,8 @@ class AppSettings(BaseSettings):
     log_to_file: bool = Field(default=False)
     log_file_path: str = Field(default="logs/app.log")
     log_retention_days: int = Field(default=30)
+    app_database_url: str | None = Field(default=None, alias="APP_DATABASE_URL")
+    prediction_log_store: str = Field(default="in_memory", alias="PREDICTION_LOG_STORE")
 
 
 @lru_cache
