@@ -1,0 +1,111 @@
+from datetime import datetime
+from typing import Any, Protocol
+
+from pydantic import BaseModel, Field
+
+
+class TrainingContext(BaseModel):
+    model_type: str
+    target_type: str = "global"
+    target_id: str | None = None
+    qualifiers: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    train_start_at: datetime
+    train_end_at: datetime
+    validation_start_at: datetime
+    validation_end_at: datetime
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+
+
+class EvaluationMetrics(BaseModel):
+    mae: float
+    rmse: float
+    mape: float
+    peak_error: float | None = None
+    validation_samples: int
+
+    def as_mlflow_metrics(self) -> dict[str, float]:
+        metrics = {
+            "mae": self.mae,
+            "rmse": self.rmse,
+            "mape": self.mape,
+            "validation_samples": float(self.validation_samples),
+        }
+        if self.peak_error is not None:
+            metrics["peak_error"] = self.peak_error
+        return metrics
+
+
+class ModelRegistryInfo(BaseModel):
+    name: str
+    version: str
+    run_id: str | None = None
+    source: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+
+
+class TrainingResult(BaseModel):
+    model_name: str
+    run_id: str
+    model_uri: str
+    metrics: EvaluationMetrics
+    registered_model: ModelRegistryInfo | None = None
+    promoted: bool = False
+
+
+class TrainingDataset(BaseModel):
+    train_features: Any
+    train_labels: Any | None = None
+    validation_features: Any
+    validation_labels: Any | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelLoadResult(BaseModel):
+    model_name: str
+    model_uri: str
+    version: str | None = None
+    run_id: str | None = None
+    loaded_at: datetime
+
+
+class PredictionLogPayload(BaseModel):
+    model_name: str
+    model_version: str | None = None
+    run_id: str | None = None
+    request_id: str | None = None
+    target_type: str = "global"
+    target_id: str | None = None
+    qualifiers: dict[str, str | int | float | bool] = Field(default_factory=dict)
+    predicted_at: datetime
+    target_timestamp: datetime
+    predicted_value: Any
+    actual_value: Any | None = None
+    error_value: float | None = None
+    error_metrics: dict[str, float] = Field(default_factory=dict)
+    input_features: dict[str, Any] = Field(default_factory=dict)
+    output_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelTrainer(Protocol):
+    def train_model(self, context: TrainingContext) -> Any:
+        ...
+
+    def evaluate_model(self, model: Any, context: TrainingContext) -> EvaluationMetrics:
+        ...
+
+    def log_model(self, model: Any, artifact_path: str) -> str:
+        ...
+
+
+class TrainingDataProcessor(Protocol):
+    def load_training_data(self, context: TrainingContext) -> Any:
+        ...
+
+    def preprocess(self, raw_data: Any, context: TrainingContext) -> Any:
+        ...
+
+    def build_features(self, processed_data: Any, context: TrainingContext) -> Any:
+        ...
+
+    def split_validation(self, features: Any, context: TrainingContext) -> TrainingDataset:
+        ...

@@ -1,0 +1,25 @@
+from functools import lru_cache
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class MlopsSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    mlflow_tracking_uri: str = Field(default="http://localhost:5000", alias="MLFLOW_TRACKING_URI")
+    mlflow_experiment: str = Field(default="default-model-serving", alias="MLFLOW_EXPERIMENT")
+    model_champion_alias: str = Field(default="champion", alias="MODEL_CHAMPION_ALIAS")
+    model_candidate_alias: str = Field(default="candidate", alias="MODEL_CANDIDATE_ALIAS")
+
+    min_validation_samples: int = Field(default=100, alias="MLOPS_MIN_VALIDATION_SAMPLES")
+    max_mape_for_promotion: float = Field(default=15.0, alias="MLOPS_MAX_MAPE_FOR_PROMOTION")
+    metric_for_promotion: str = Field(default="rmse", alias="MLOPS_METRIC_FOR_PROMOTION")
+
+
+@lru_cache
+def get_mlops_settings() -> MlopsSettings:
+    return MlopsSettings()
+
+
+mlops_settings = get_mlops_settings()
