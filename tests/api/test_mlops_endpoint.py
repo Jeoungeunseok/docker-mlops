@@ -93,15 +93,32 @@ async def test_retry_training_job_returns_409_when_job_cannot_be_retried(monkeyp
 
 
 @pytest.mark.asyncio
-async def test_rollback_model_returns_result(monkeypatch: Any) -> None:
+async def test_rollback_model_returns_result_and_reloads_champion(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
     def fake_rollback_champion(model_name: str, version: str) -> ModelRollbackResult:
+        captured["rollback"] = (model_name, version)
         return ModelRollbackResult(model_name=model_name, champion_version=version)
 
+    class DummyModelLoader:
+        def load(self, model_name: str, force_reload: bool = False) -> mlops.ModelLoadResult:
+            captured["reload"] = (model_name, force_reload)
+            return mlops.ModelLoadResult(
+                model_name=model_name,
+                model_uri=f"models:/{model_name}@champion",
+                version="2",
+                run_id="run-2",
+                loaded_at=datetime(2026, 1, 1, 12, 0, 0),
+            )
+
     monkeypatch.setattr(mlops, "rollback_champion", fake_rollback_champion)
+    monkeypatch.setattr(mlops, "model_loader", DummyModelLoader())
 
     result = await mlops.rollback_model("xgboost_global", mlops.ModelRollbackRequest(version="2"))
 
     assert result == ModelRollbackResult(model_name="xgboost_global", champion_version="2")
+    assert captured["rollback"] == ("xgboost_global", "2")
+    assert captured["reload"] == ("xgboost_global", True)
 
 
 def _context(model_type: str = "xgboost") -> TrainingContext:

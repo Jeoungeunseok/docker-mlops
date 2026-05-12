@@ -110,7 +110,13 @@ async def reload_model(model_name: str) -> ModelLoadResult:
 async def rollback_model(model_name: str, request: ModelRollbackRequest) -> ModelRollbackResult:
     app_logger.info("Rolling back champion model", extra={"model_name": model_name, "version": request.version})
     try:
-        return await run_in_threadpool(rollback_champion, model_name, request.version)
+        result = await run_in_threadpool(rollback_champion, model_name, request.version)
+        loaded = await run_in_threadpool(model_loader.load, model_name, True)
+        app_logger.info(
+            "Champion model reloaded after rollback",
+            extra={"model_name": model_name, "model_version": loaded.version, "run_id": loaded.run_id},
+        )
+        return result
     except Exception as exc:
         app_logger.exception(
             "Model rollback failed",
