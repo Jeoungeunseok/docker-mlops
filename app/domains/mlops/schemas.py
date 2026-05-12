@@ -114,6 +114,7 @@ class DriftCheckResult(BaseModel):
 class MlopsStoreStatus(BaseModel):
     training_job_store: str
     prediction_log_store: str
+    mlops_event_store: str
 
 
 class MlopsRegistryStatus(BaseModel):
@@ -159,6 +160,15 @@ class MlopsStatus(BaseModel):
     scheduler: MlopsSchedulerStatus
     notifications: MlopsNotificationStatus
     drift: MlopsDriftStatus
+
+
+class MlopsEventRecord(BaseModel):
+    event_id: str
+    event_type: str
+    severity: str
+    message: str
+    occurred_at: datetime
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class PredictionLogPayload(BaseModel):

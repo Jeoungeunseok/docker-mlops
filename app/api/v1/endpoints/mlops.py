@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
 from app.domains.mlops.config import mlops_settings
+from app.domains.mlops.event_store import mlops_event_store
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.model_registry import get_model_by_alias, rollback_champion
 from app.domains.mlops.drift import check_model_drift, default_drift_check_request
@@ -18,6 +19,7 @@ from app.domains.mlops.scheduler import build_scheduled_training_jobs
 from app.domains.mlops.schemas import (
     DriftCheckResult,
     MlopsDriftStatus,
+    MlopsEventRecord,
     MlopsNotificationStatus,
     MlopsRegistryStatus,
     MlopsSchedulerStatus,
@@ -51,6 +53,7 @@ async def get_mlops_status(request: Request) -> MlopsStatus:
         stores=MlopsStoreStatus(
             training_job_store=settings.training_job_store,
             prediction_log_store=settings.prediction_log_store,
+            mlops_event_store=settings.mlops_event_store,
         ),
         scheduler=scheduler_status,
         notifications=MlopsNotificationStatus(
@@ -64,6 +67,11 @@ async def get_mlops_status(request: Request) -> MlopsStatus:
             max_mean_metric_value=mlops_settings.drift_max_mean_metric_value,
         ),
     )
+
+
+@router.get("/events", response_model=list[MlopsEventRecord])
+async def get_mlops_events(limit: int = 100, event_type: str | None = None) -> list[MlopsEventRecord]:
+    return await run_in_threadpool(mlops_event_store.list_recent, limit, event_type)
 
 
 @router.post("/training-jobs", response_model=TrainingResult)

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from app.api.v1.endpoints import mlops
 from app.domains.mlops.schemas import (
     EvaluationMetrics,
+    MlopsEventRecord,
     MlopsSchedulerJobStatus,
     ModelRollbackResult,
     PredictionLogPayload,
@@ -45,7 +46,7 @@ async def test_get_mlops_status_returns_operational_summary(monkeypatch: Any) ->
     monkeypatch.setattr(
         mlops,
         "settings",
-        SimpleNamespace(training_job_store="postgres", prediction_log_store="postgres"),
+        SimpleNamespace(training_job_store="postgres", prediction_log_store="postgres", mlops_event_store="postgres"),
     )
     monkeypatch.setattr(
         mlops,
@@ -71,6 +72,7 @@ async def test_get_mlops_status_returns_operational_summary(monkeypatch: Any) ->
     assert result.registries.data_processors == ["xgboost"]
     assert result.registries.prediction_input_validators == ["forecast"]
     assert result.stores.training_job_store == "postgres"
+    assert result.stores.mlops_event_store == "postgres"
     assert result.scheduler.enabled
     assert result.scheduler.active
     assert result.scheduler.configured_jobs == 1
@@ -78,6 +80,32 @@ async def test_get_mlops_status_returns_operational_summary(monkeypatch: Any) ->
     assert result.notifications.sink == "webhook"
     assert result.notifications.webhook_configured
     assert result.drift.max_mean_metric_value == 15.0
+
+
+@pytest.mark.asyncio
+async def test_get_mlops_events_returns_recent_events(monkeypatch: Any) -> None:
+    expected = [
+        MlopsEventRecord(
+            event_id="event-1",
+            event_type="drift_detected",
+            severity="warning",
+            message="Model drift detected.",
+            occurred_at=datetime(2026, 1, 1, 12, 0, 0),
+            payload={"model_name": "xgboost_global"},
+        )
+    ]
+
+    class DummyEventStore:
+        def list_recent(self, limit: int = 100, event_type: str | None = None) -> list[MlopsEventRecord]:
+            assert limit == 10
+            assert event_type == "drift_detected"
+            return expected
+
+    monkeypatch.setattr(mlops, "mlops_event_store", DummyEventStore())
+
+    result = await mlops.get_mlops_events(limit=10, event_type="drift_detected")
+
+    assert result == expected
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ services:
       APP_DATABASE_URL: postgresql://${APP_DB_USER:-app}:${APP_DB_PASSWORD:-app_pass}@app-db:5432/${APP_DB_NAME:-app}
       PREDICTION_LOG_STORE: ${PREDICTION_LOG_STORE:-in_memory}
       TRAINING_JOB_STORE: ${TRAINING_JOB_STORE:-in_memory}
+      MLOPS_EVENT_STORE: ${MLOPS_EVENT_STORE:-in_memory}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
       MLFLOW_EXPERIMENT: ${MLFLOW_EXPERIMENT:-default-model-serving}
       MODEL_CHAMPION_ALIAS: ${MODEL_CHAMPION_ALIAS:-champion}

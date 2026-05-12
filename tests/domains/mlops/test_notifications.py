@@ -23,14 +23,21 @@ class FailingSink:
         raise RuntimeError("send failed")
 
 
-def test_notification_dispatcher_sends_event() -> None:
+def test_notification_dispatcher_sends_event(monkeypatch) -> None:
     sink = CapturingSink()
     dispatcher = NotificationDispatcher(sink)
     event = NotificationEvent(event_type="drift_detected", message="Drift detected.")
+    captured = {}
 
+    monkeypatch.setattr(
+        notifications.mlops_event_store,
+        "save",
+        lambda record: captured.setdefault("record", record),
+    )
     dispatcher.notify(event)
 
     assert sink.events == [event]
+    assert captured["record"].event_type == "drift_detected"
 
 
 def test_notification_dispatcher_does_not_raise_when_sink_fails() -> None:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.core.logging import app_logger
 from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.config import mlops_settings
+from app.domains.mlops.event_store import create_mlops_event_record, mlops_event_store
 
 
 class NotificationEvent(BaseModel):
@@ -63,6 +64,18 @@ class NotificationDispatcher:
         self._sink = sink
 
     def notify(self, event: NotificationEvent) -> None:
+        try:
+            mlops_event_store.save(
+                create_mlops_event_record(
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    message=event.message,
+                    occurred_at=event.occurred_at,
+                    payload=event.payload,
+                )
+            )
+        except Exception:
+            app_logger.exception("Failed to save MLOps audit event", extra={"event_type": event.event_type})
         try:
             self._sink.send(event)
         except Exception:

@@ -20,6 +20,7 @@ class AppSettings(BaseSettings):
     app_database_url: str | None = Field(default=None, alias="APP_DATABASE_URL")
     prediction_log_store: str = Field(default="in_memory", alias="PREDICTION_LOG_STORE")
     training_job_store: str = Field(default="in_memory", alias="TRAINING_JOB_STORE")
+    mlops_event_store: str = Field(default="in_memory", alias="MLOPS_EVENT_STORE")
 
 
 @lru_cache
