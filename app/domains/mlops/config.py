@@ -21,6 +21,8 @@ class MlopsSettings(BaseSettings):
     drift_max_mean_error_value: float | None = Field(default=None, alias="MLOPS_DRIFT_MAX_MEAN_ERROR_VALUE")
     drift_metric_name: str = Field(default="mape", alias="MLOPS_DRIFT_METRIC_NAME")
     drift_max_mean_metric_value: float | None = Field(default=None, alias="MLOPS_DRIFT_MAX_MEAN_METRIC_VALUE")
+    notification_sink: str = Field(default="disabled", alias="MLOPS_NOTIFICATION_SINK")
+    notification_webhook_url: str | None = Field(default=None, alias="MLOPS_NOTIFICATION_WEBHOOK_URL")
 
 
 @lru_cache

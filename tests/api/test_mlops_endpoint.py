@@ -120,16 +120,20 @@ async def test_rollback_model_returns_result_and_reloads_champion(monkeypatch: A
 
     monkeypatch.setattr(mlops, "rollback_champion", fake_rollback_champion)
     monkeypatch.setattr(mlops, "model_loader", DummyModelLoader())
+    monkeypatch.setattr(mlops.notification_dispatcher, "notify", lambda event: captured.setdefault("event", event))
 
     result = await mlops.rollback_model("xgboost_global", mlops.ModelRollbackRequest(version="2"))
 
     assert result == ModelRollbackResult(model_name="xgboost_global", champion_version="2")
     assert captured["rollback"] == ("xgboost_global", "2")
     assert captured["reload"] == ("xgboost_global", True)
+    assert captured["event"].event_type == "rollback_completed"
 
 
 @pytest.mark.asyncio
 async def test_get_model_drift_returns_drift_result(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
     class DummyPredictionLogStore:
         def list_by_model(self, model_name: str) -> list[PredictionLogPayload]:
             assert model_name == "xgboost_global"
@@ -146,6 +150,7 @@ async def test_get_model_drift_returns_drift_result(monkeypatch: Any) -> None:
             ]
 
     monkeypatch.setattr(mlops, "prediction_log_store", DummyPredictionLogStore())
+    monkeypatch.setattr(mlops.notification_dispatcher, "notify", lambda event: captured.setdefault("event", event))
 
     result = await mlops.get_model_drift(
         "xgboost_global",
@@ -156,6 +161,7 @@ async def test_get_model_drift_returns_drift_result(monkeypatch: Any) -> None:
     assert result.drift_detected
     assert result.evaluated_samples == 1
     assert result.mean_metric_value == 20.0
+    assert captured["event"].event_type == "drift_detected"
 
 
 def _context(model_type: str = "xgboost") -> TrainingContext:

@@ -6,6 +6,7 @@ from app.core.exceptions import ModelNotLoadedError
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.model_registry import get_model_by_alias, rollback_champion
 from app.domains.mlops.drift import check_model_drift, default_drift_check_request
+from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
 from app.domains.mlops.schemas import (
     DriftCheckResult,
     ModelLoadResult,
@@ -119,6 +120,19 @@ async def rollback_model(model_name: str, request: ModelRollbackRequest) -> Mode
             "Champion model reloaded after rollback",
             extra={"model_name": model_name, "model_version": loaded.version, "run_id": loaded.run_id},
         )
+        notification_dispatcher.notify(
+            NotificationEvent(
+                event_type="rollback_completed",
+                severity="warning",
+                message="Champion model rollback completed.",
+                payload={
+                    "model_name": model_name,
+                    "champion_version": result.champion_version,
+                    "loaded_version": loaded.version,
+                    "run_id": loaded.run_id,
+                },
+            )
+        )
         return result
     except Exception as exc:
         app_logger.exception(
@@ -147,7 +161,17 @@ async def get_model_drift(
             max_mean_metric_value=max_mean_metric_value,
         )
         logs = await run_in_threadpool(prediction_log_store.list_by_model, model_name)
-        return await run_in_threadpool(check_model_drift, model_name, logs, request)
+        result = await run_in_threadpool(check_model_drift, model_name, logs, request)
+        if result.drift_detected:
+            notification_dispatcher.notify(
+                NotificationEvent(
+                    event_type="drift_detected",
+                    severity="warning",
+                    message="Model drift detected.",
+                    payload=result.model_dump(mode="json"),
+                )
+            )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:

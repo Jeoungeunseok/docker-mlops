@@ -9,6 +9,7 @@ from psycopg2.extras import Json, RealDictCursor
 from app.core.config import settings
 from app.core.logging import app_logger
 from app.core.timezone import now_in_app_timezone
+from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
 from app.domains.mlops.schemas import TrainingContext, TrainingJobRecord, TrainingResult
 
 
@@ -351,7 +352,21 @@ class TrainingJobRunner:
         try:
             result = train_model_job(record.context)
         except Exception as exc:
-            self._store.mark_failed(job_id, str(exc))
+            failed_record = self._store.mark_failed(job_id, str(exc))
+            notification_dispatcher.notify(
+                NotificationEvent(
+                    event_type="training_job_failed",
+                    severity="error",
+                    message="Async training job failed.",
+                    payload={
+                        "job_id": job_id,
+                        "model_type": failed_record.context.model_type,
+                        "attempts": failed_record.attempts,
+                        "max_attempts": failed_record.max_attempts,
+                        "error_message": failed_record.error_message,
+                    },
+                )
+            )
             app_logger.exception("Async training job failed", extra={"job_id": job_id})
             return
         self._store.mark_succeeded(job_id, result)

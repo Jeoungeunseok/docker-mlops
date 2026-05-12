@@ -145,6 +145,33 @@ def test_training_job_runner_rejects_retry_when_attempt_limit_is_reached() -> No
         raise AssertionError("Expected ValueError")
 
 
+def test_training_job_runner_notifies_when_job_fails(monkeypatch) -> None:
+    from app.jobs import train_model_job
+
+    captured = {}
+    store = InMemoryTrainingJobStore()
+    runner = TrainingJobRunner(store)
+    created = store.create(_context(), max_attempts=1)
+
+    def fake_train_model_job(context: TrainingContext) -> TrainingResult:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(train_model_job, "train_model_job", fake_train_model_job)
+    monkeypatch.setattr(
+        training_jobs.notification_dispatcher,
+        "notify",
+        lambda event: captured.setdefault("event", event),
+    )
+
+    runner._run(created.job_id)
+
+    failed = store.get(created.job_id)
+    assert failed is not None
+    assert failed.status == "failed"
+    assert captured["event"].event_type == "training_job_failed"
+    assert captured["event"].payload["job_id"] == created.job_id
+
+
 def _context() -> TrainingContext:
     return TrainingContext(
         model_type="xgboost",
