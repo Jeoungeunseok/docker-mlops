@@ -164,6 +164,25 @@ async def test_get_model_drift_returns_drift_result(monkeypatch: Any) -> None:
     assert captured["event"].event_type == "drift_detected"
 
 
+@pytest.mark.asyncio
+async def test_reload_model_notifies_when_reload_fails(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    class DummyModelLoader:
+        def load(self, model_name: str, force_reload: bool = False) -> mlops.ModelLoadResult:
+            raise RuntimeError("reload failed")
+
+    monkeypatch.setattr(mlops, "model_loader", DummyModelLoader())
+    monkeypatch.setattr(mlops.notification_dispatcher, "notify", lambda event: captured.setdefault("event", event))
+
+    with pytest.raises(HTTPException) as exc:
+        await mlops.reload_model("xgboost_global")
+
+    assert exc.value.status_code == 502
+    assert captured["event"].event_type == "model_reload_failed"
+    assert captured["event"].payload["error_message"] == "reload failed"
+
+
 def _context(model_type: str = "xgboost") -> TrainingContext:
     return TrainingContext(
         model_type=model_type,

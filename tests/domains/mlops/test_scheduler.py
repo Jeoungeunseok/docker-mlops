@@ -25,6 +25,11 @@ class CapturingSubmitter:
         )
 
 
+class FailingSubmitter:
+    def submit(self, context: TrainingContext, max_attempts: int = 1) -> TrainingJobRecord:
+        raise RuntimeError("submit failed")
+
+
 def test_build_scheduled_training_context_uses_rolling_windows() -> None:
     job = ScheduledTrainingJob(
         model_type="xgboost",
@@ -96,3 +101,52 @@ def test_scheduler_tick_submits_due_jobs_and_updates_next_run() -> None:
     assert submitter.submissions[0][1] == 3
     assert states[0].last_submitted_job_id == "job-1"
     assert states[0].next_run_at == current_time + timedelta(seconds=3600)
+
+
+def test_scheduler_tick_notifies_when_job_is_submitted(monkeypatch) -> None:
+    from app.domains.mlops import scheduler as scheduler_module
+
+    captured = {}
+    submitter = CapturingSubmitter()
+    job = ScheduledTrainingJob(
+        model_type="xgboost",
+        interval_seconds=3600,
+        train_window_hours=24,
+        validation_window_hours=6,
+        run_on_start=True,
+    )
+    scheduler = InProcessTrainingScheduler([job], submitter=submitter)
+    monkeypatch.setattr(
+        scheduler_module.notification_dispatcher,
+        "notify",
+        lambda event: captured.setdefault("event", event),
+    )
+
+    scheduler.tick(datetime(2026, 1, 2, 12, 0, 0))
+
+    assert captured["event"].event_type == "scheduled_retraining_submitted"
+    assert captured["event"].payload["job_id"] == "job-1"
+
+
+def test_scheduler_tick_notifies_when_submit_fails(monkeypatch) -> None:
+    from app.domains.mlops import scheduler as scheduler_module
+
+    captured = {}
+    job = ScheduledTrainingJob(
+        model_type="xgboost",
+        interval_seconds=3600,
+        train_window_hours=24,
+        validation_window_hours=6,
+        run_on_start=True,
+    )
+    scheduler = InProcessTrainingScheduler([job], submitter=FailingSubmitter())
+    monkeypatch.setattr(
+        scheduler_module.notification_dispatcher,
+        "notify",
+        lambda event: captured.setdefault("event", event),
+    )
+
+    scheduler.tick(datetime(2026, 1, 2, 12, 0, 0))
+
+    assert captured["event"].event_type == "scheduled_retraining_submit_failed"
+    assert captured["event"].payload["error_message"] == "submit failed"

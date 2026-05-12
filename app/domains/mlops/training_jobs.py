@@ -370,6 +370,20 @@ class TrainingJobRunner:
             app_logger.exception("Async training job failed", extra={"job_id": job_id})
             return
         self._store.mark_succeeded(job_id, result)
+        notification_dispatcher.notify(
+            NotificationEvent(
+                event_type="training_job_succeeded",
+                severity="info",
+                message="Async training job succeeded.",
+                payload={
+                    "job_id": job_id,
+                    "model_type": record.context.model_type,
+                    "model_name": result.model_name,
+                    "run_id": result.run_id,
+                    "promoted": result.promoted,
+                },
+            )
+        )
         app_logger.info("Async training job succeeded", extra={"job_id": job_id})
 
 

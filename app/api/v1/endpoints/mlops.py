@@ -107,6 +107,14 @@ async def reload_model(model_name: str) -> ModelLoadResult:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         app_logger.exception("Model reload failed", extra={"model_name": model_name})
+        notification_dispatcher.notify(
+            NotificationEvent(
+                event_type="model_reload_failed",
+                severity="error",
+                message="Model reload failed.",
+                payload={"model_name": model_name, "error_message": str(exc)},
+            )
+        )
         raise HTTPException(status_code=502, detail=f"Failed to reload model: {exc}") from exc
 
 

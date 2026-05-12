@@ -3,6 +3,7 @@ from mlflow import MlflowClient
 
 from app.core.logging import app_logger
 from app.domains.mlops.config import mlops_settings
+from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
 from app.domains.mlops.schemas import EvaluationMetrics, ModelRegistryInfo, ModelRollbackResult
 
 
@@ -70,6 +71,14 @@ def promote_to_champion(model_name: str, version: str) -> None:
     app_logger.info(
         "Model promoted to champion",
         extra={"model_name": model_name, "model_version": version},
+    )
+    notification_dispatcher.notify(
+        NotificationEvent(
+            event_type="champion_promoted",
+            severity="info",
+            message="Model promoted to champion.",
+            payload={"model_name": model_name, "model_version": version},
+        )
     )
 
 

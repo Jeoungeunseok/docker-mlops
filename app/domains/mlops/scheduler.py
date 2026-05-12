@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from app.core.logging import app_logger
 from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.config import mlops_settings
+from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
 from app.domains.mlops.schemas import TrainingContext, TrainingJobRecord
 from app.domains.mlops.training_jobs import training_job_runner
 
@@ -111,12 +112,40 @@ class InProcessTrainingScheduler:
                 "Scheduled retraining job submitted",
                 extra={"job_id": record.job_id, "model_type": job.model_type},
             )
+            notification_dispatcher.notify(
+                NotificationEvent(
+                    event_type="scheduled_retraining_submitted",
+                    severity="info",
+                    message="Scheduled retraining job submitted.",
+                    payload={
+                        "job_id": record.job_id,
+                        "model_type": job.model_type,
+                        "target_type": job.target_type,
+                        "target_id": job.target_id,
+                        "next_run_at": self._states[index].next_run_at.isoformat(),
+                    },
+                )
+            )
         except Exception as exc:
             self._states[index] = self._states[index].model_copy(
                 update={
                     "next_run_at": current_time + timedelta(seconds=job.interval_seconds),
                     "last_error_message": str(exc),
                 }
+            )
+            notification_dispatcher.notify(
+                NotificationEvent(
+                    event_type="scheduled_retraining_submit_failed",
+                    severity="error",
+                    message="Failed to submit scheduled retraining job.",
+                    payload={
+                        "model_type": job.model_type,
+                        "target_type": job.target_type,
+                        "target_id": job.target_id,
+                        "error_message": str(exc),
+                        "next_run_at": self._states[index].next_run_at.isoformat(),
+                    },
+                )
             )
             app_logger.exception("Failed to submit scheduled retraining job", extra={"model_type": job.model_type})
 

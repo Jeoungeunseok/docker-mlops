@@ -172,6 +172,40 @@ def test_training_job_runner_notifies_when_job_fails(monkeypatch) -> None:
     assert captured["event"].payload["job_id"] == created.job_id
 
 
+def test_training_job_runner_notifies_when_job_succeeds(monkeypatch) -> None:
+    from app.jobs import train_model_job
+
+    captured = {}
+    store = InMemoryTrainingJobStore()
+    runner = TrainingJobRunner(store)
+    created = store.create(_context(), max_attempts=1)
+    expected = TrainingResult(
+        model_name="xgboost_global",
+        run_id="run-1",
+        model_uri="runs:/run-1/model",
+        metrics=EvaluationMetrics(mae=1.0, rmse=1.0, mape=1.0, validation_samples=100),
+        promoted=True,
+    )
+
+    def fake_train_model_job(context: TrainingContext) -> TrainingResult:
+        return expected
+
+    monkeypatch.setattr(train_model_job, "train_model_job", fake_train_model_job)
+    monkeypatch.setattr(
+        training_jobs.notification_dispatcher,
+        "notify",
+        lambda event: captured.setdefault("event", event),
+    )
+
+    runner._run(created.job_id)
+
+    succeeded = store.get(created.job_id)
+    assert succeeded is not None
+    assert succeeded.status == "succeeded"
+    assert captured["event"].event_type == "training_job_succeeded"
+    assert captured["event"].payload["model_name"] == "xgboost_global"
+
+
 def _context() -> TrainingContext:
     return TrainingContext(
         model_type="xgboost",
