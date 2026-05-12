@@ -15,6 +15,8 @@ class MlopsSettings(BaseSettings):
     min_validation_samples: int = Field(default=100, alias="MLOPS_MIN_VALIDATION_SAMPLES")
     max_mape_for_promotion: float = Field(default=15.0, alias="MLOPS_MAX_MAPE_FOR_PROMOTION")
     metric_for_promotion: str = Field(default="rmse", alias="MLOPS_METRIC_FOR_PROMOTION")
+    enable_scheduled_retraining: bool = Field(default=False, alias="MLOPS_ENABLE_SCHEDULED_RETRAINING")
+    scheduled_retraining_jobs: str = Field(default="[]", alias="MLOPS_SCHEDULED_RETRAINING_JOBS")
 
 
 @lru_cache
