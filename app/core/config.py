@@ -19,6 +19,7 @@ class AppSettings(BaseSettings):
     log_retention_days: int = Field(default=30)
     app_database_url: str | None = Field(default=None, alias="APP_DATABASE_URL")
     prediction_log_store: str = Field(default="in_memory", alias="PREDICTION_LOG_STORE")
+    training_job_store: str = Field(default="in_memory", alias="TRAINING_JOB_STORE")
 
 
 @lru_cache
