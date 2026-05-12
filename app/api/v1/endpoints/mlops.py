@@ -1,14 +1,28 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
+from app.core.config import settings
 from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
+from app.domains.mlops.config import mlops_settings
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.model_registry import get_model_by_alias, rollback_champion
 from app.domains.mlops.drift import check_model_drift, default_drift_check_request
 from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
+from app.domains.mlops.registry import (
+    data_processor_registry,
+    prediction_input_validator_registry,
+    trainer_registry,
+)
+from app.domains.mlops.scheduler import build_scheduled_training_jobs
 from app.domains.mlops.schemas import (
     DriftCheckResult,
+    MlopsDriftStatus,
+    MlopsNotificationStatus,
+    MlopsRegistryStatus,
+    MlopsSchedulerStatus,
+    MlopsStatus,
+    MlopsStoreStatus,
     ModelLoadResult,
     ModelRegistryInfo,
     ModelRollbackRequest,
@@ -22,6 +36,34 @@ from app.domains.mlops.training_jobs import training_job_runner
 from app.jobs.train_model_job import train_model_job
 
 router = APIRouter()
+
+
+@router.get("/status", response_model=MlopsStatus)
+async def get_mlops_status(request: Request) -> MlopsStatus:
+    scheduler = getattr(request.app.state, "training_scheduler", None)
+    scheduler_status = _build_scheduler_status(scheduler)
+    return MlopsStatus(
+        registries=MlopsRegistryStatus(
+            trainers=trainer_registry.registered_model_types(),
+            data_processors=data_processor_registry.registered_model_types(),
+            prediction_input_validators=prediction_input_validator_registry.registered_model_types(),
+        ),
+        stores=MlopsStoreStatus(
+            training_job_store=settings.training_job_store,
+            prediction_log_store=settings.prediction_log_store,
+        ),
+        scheduler=scheduler_status,
+        notifications=MlopsNotificationStatus(
+            sink=mlops_settings.notification_sink,
+            webhook_configured=bool(mlops_settings.notification_webhook_url),
+        ),
+        drift=MlopsDriftStatus(
+            min_samples=mlops_settings.drift_min_samples,
+            metric_name=mlops_settings.drift_metric_name,
+            max_mean_error_value=mlops_settings.drift_max_mean_error_value,
+            max_mean_metric_value=mlops_settings.drift_max_mean_metric_value,
+        ),
+    )
 
 
 @router.post("/training-jobs", response_model=TrainingResult)
@@ -185,3 +227,34 @@ async def get_model_drift(
     except Exception as exc:
         app_logger.exception("Model drift check failed", extra={"model_name": model_name})
         raise HTTPException(status_code=502, detail=f"Failed to check model drift: {exc}") from exc
+
+
+def _build_scheduler_status(scheduler: object | None) -> MlopsSchedulerStatus:
+    if not mlops_settings.enable_scheduled_retraining:
+        return MlopsSchedulerStatus(enabled=False, active=False, config_valid=True)
+
+    try:
+        configured_jobs = len(build_scheduled_training_jobs(mlops_settings.scheduled_retraining_jobs))
+    except Exception as exc:
+        return MlopsSchedulerStatus(
+            enabled=True,
+            active=False,
+            config_valid=False,
+            config_error=str(exc),
+        )
+
+    if scheduler is None:
+        return MlopsSchedulerStatus(
+            enabled=True,
+            active=False,
+            config_valid=True,
+            configured_jobs=configured_jobs,
+        )
+
+    return MlopsSchedulerStatus(
+        enabled=True,
+        active=True,
+        config_valid=True,
+        configured_jobs=configured_jobs,
+        jobs=scheduler.states(),
+    )

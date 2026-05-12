@@ -1,4 +1,5 @@
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -7,12 +8,76 @@ from fastapi import HTTPException
 from app.api.v1.endpoints import mlops
 from app.domains.mlops.schemas import (
     EvaluationMetrics,
+    MlopsSchedulerJobStatus,
     ModelRollbackResult,
     PredictionLogPayload,
     TrainingContext,
     TrainingJobRecord,
     TrainingResult,
 )
+from app.domains.mlops.registry import ModelTypeRegistry
+
+
+@pytest.mark.asyncio
+async def test_get_mlops_status_returns_operational_summary(monkeypatch: Any) -> None:
+    trainer_registry = ModelTypeRegistry()
+    data_processor_registry = ModelTypeRegistry()
+    validator_registry = ModelTypeRegistry()
+    trainer_registry.register("xgboost", lambda: object())
+    data_processor_registry.register("xgboost", lambda: object())
+    validator_registry.register("forecast", lambda: object())
+
+    class DummyScheduler:
+        def states(self) -> list[MlopsSchedulerJobStatus]:
+            return [
+                MlopsSchedulerJobStatus(
+                    model_type="xgboost",
+                    target_type="global",
+                    next_run_at=datetime(2026, 1, 1, 12, 0, 0),
+                    last_submitted_job_id="job-1",
+                )
+            ]
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(training_scheduler=DummyScheduler())))
+    monkeypatch.setattr(mlops, "trainer_registry", trainer_registry)
+    monkeypatch.setattr(mlops, "data_processor_registry", data_processor_registry)
+    monkeypatch.setattr(mlops, "prediction_input_validator_registry", validator_registry)
+    monkeypatch.setattr(
+        mlops,
+        "settings",
+        SimpleNamespace(training_job_store="postgres", prediction_log_store="postgres"),
+    )
+    monkeypatch.setattr(
+        mlops,
+        "mlops_settings",
+        SimpleNamespace(
+            enable_scheduled_retraining=True,
+            scheduled_retraining_jobs=(
+                '[{"model_type":"xgboost","interval_seconds":3600,'
+                '"train_window_hours":24,"validation_window_hours":6}]'
+            ),
+            notification_sink="webhook",
+            notification_webhook_url="https://example.com/hook",
+            drift_min_samples=30,
+            drift_metric_name="mape",
+            drift_max_mean_error_value=10.0,
+            drift_max_mean_metric_value=15.0,
+        ),
+    )
+
+    result = await mlops.get_mlops_status(request)
+
+    assert result.registries.trainers == ["xgboost"]
+    assert result.registries.data_processors == ["xgboost"]
+    assert result.registries.prediction_input_validators == ["forecast"]
+    assert result.stores.training_job_store == "postgres"
+    assert result.scheduler.enabled
+    assert result.scheduler.active
+    assert result.scheduler.configured_jobs == 1
+    assert result.scheduler.jobs[0].last_submitted_job_id == "job-1"
+    assert result.notifications.sink == "webhook"
+    assert result.notifications.webhook_configured
+    assert result.drift.max_mean_metric_value == 15.0
 
 
 @pytest.mark.asyncio

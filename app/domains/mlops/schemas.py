@@ -111,6 +111,56 @@ class DriftCheckResult(BaseModel):
     reason: str
 
 
+class MlopsStoreStatus(BaseModel):
+    training_job_store: str
+    prediction_log_store: str
+
+
+class MlopsRegistryStatus(BaseModel):
+    trainers: list[str] = Field(default_factory=list)
+    data_processors: list[str] = Field(default_factory=list)
+    prediction_input_validators: list[str] = Field(default_factory=list)
+
+
+class MlopsSchedulerJobStatus(BaseModel):
+    model_type: str
+    target_type: str
+    target_id: str | None = None
+    next_run_at: datetime
+    last_submitted_job_id: str | None = None
+    last_submitted_at: datetime | None = None
+    last_error_message: str | None = None
+
+
+class MlopsSchedulerStatus(BaseModel):
+    enabled: bool
+    active: bool
+    config_valid: bool
+    configured_jobs: int = 0
+    config_error: str | None = None
+    jobs: list[MlopsSchedulerJobStatus] = Field(default_factory=list)
+
+
+class MlopsNotificationStatus(BaseModel):
+    sink: str
+    webhook_configured: bool = False
+
+
+class MlopsDriftStatus(BaseModel):
+    min_samples: int
+    metric_name: str
+    max_mean_error_value: float | None = None
+    max_mean_metric_value: float | None = None
+
+
+class MlopsStatus(BaseModel):
+    registries: MlopsRegistryStatus
+    stores: MlopsStoreStatus
+    scheduler: MlopsSchedulerStatus
+    notifications: MlopsNotificationStatus
+    drift: MlopsDriftStatus
+
+
 class PredictionLogPayload(BaseModel):
     model_name: str
     model_version: str | None = None
