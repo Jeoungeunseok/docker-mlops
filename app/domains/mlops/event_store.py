@@ -7,6 +7,7 @@ from psycopg2.extras import Json, RealDictCursor
 
 from app.core.config import settings
 from app.domains.mlops.schemas import MlopsEventRecord
+from app.infra.migrations import run_app_database_migrations
 
 
 class MlopsEventStore(Protocol):
@@ -93,32 +94,7 @@ class PostgresMlopsEventStore:
         with self._lock:
             if self._table_ready:
                 return
-            with psycopg2.connect(self._database_url) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS mlops_events (
-                            event_id TEXT PRIMARY KEY,
-                            event_type TEXT NOT NULL,
-                            severity TEXT NOT NULL,
-                            message TEXT NOT NULL,
-                            occurred_at TIMESTAMPTZ NOT NULL,
-                            payload JSONB NOT NULL DEFAULT '{}'::jsonb
-                        )
-                        """
-                    )
-                    cursor.execute(
-                        """
-                        CREATE INDEX IF NOT EXISTS idx_mlops_events_type_occurred_at
-                        ON mlops_events (event_type, occurred_at DESC)
-                        """
-                    )
-                    cursor.execute(
-                        """
-                        CREATE INDEX IF NOT EXISTS idx_mlops_events_occurred_at
-                        ON mlops_events (occurred_at DESC)
-                        """
-                    )
+            run_app_database_migrations(self._database_url)
             self._table_ready = True
 
 

@@ -16,18 +16,16 @@
 - 운영 상태 조회 API 완료: registry, store, scheduler, notification, drift 설정/상태를 `/mlops/status`에서 확인한다.
 - MLOps event/audit log 완료: notification event를 in-memory/postgres store에 저장하고 `/mlops/events`에서 최근 이벤트를 조회한다.
 - 공통 관리 API 완료: scheduler dry-run/수동 tick과 notification test send API를 제공한다.
+- Postgres migration/init 구조 정리 완료: app DB schema migration runner를 추가하고 Postgres store의 직접 DDL 실행을 제거한다.
 
 다음에 이어서 할 우선순위:
 
-1. Postgres migration/init 구조 정리
-   - 현재 store가 직접 수행하는 `CREATE TABLE IF NOT EXISTS`를 migration 구조로 분리
-
-2. 실제 모델/데이터 구현
+1. 실제 모델/데이터 구현
    - XGBoost/GRU trainer 실제 구현
    - 데이터 로딩/전처리/split 구현
    - 모델별 input validator 등록
 
-3. 알림 sink 확장
+2. 알림 sink 확장
    - Slack/Email 등 전용 sink가 필요하면 추가
 
 주의:

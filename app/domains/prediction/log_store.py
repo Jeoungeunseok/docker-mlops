@@ -6,6 +6,7 @@ from psycopg2.extras import Json, RealDictCursor
 
 from app.core.config import settings
 from app.domains.mlops.schemas import PredictionLogPayload
+from app.infra.migrations import run_app_database_migrations
 
 
 class PredictionLogStore(Protocol):
@@ -181,42 +182,7 @@ class PostgresPredictionLogStore:
         with self._lock:
             if self._table_ready:
                 return
-            with psycopg2.connect(self._database_url) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS prediction_logs (
-                            id BIGSERIAL PRIMARY KEY,
-                            model_name TEXT NOT NULL,
-                            model_version TEXT,
-                            run_id TEXT,
-                            request_id TEXT,
-                            target_type TEXT NOT NULL,
-                            target_id TEXT,
-                            qualifiers JSONB NOT NULL DEFAULT '{}'::jsonb,
-                            predicted_at TIMESTAMPTZ NOT NULL,
-                            target_timestamp TIMESTAMPTZ NOT NULL,
-                            predicted_value JSONB NOT NULL,
-                            actual_value JSONB,
-                            error_value DOUBLE PRECISION,
-                            error_metrics JSONB NOT NULL DEFAULT '{}'::jsonb,
-                            input_features JSONB NOT NULL DEFAULT '{}'::jsonb,
-                            output_metadata JSONB NOT NULL DEFAULT '{}'::jsonb
-                        )
-                        """
-                    )
-                    cursor.execute(
-                        """
-                        CREATE INDEX IF NOT EXISTS idx_prediction_logs_model_predicted_at
-                        ON prediction_logs (model_name, predicted_at DESC)
-                        """
-                    )
-                    cursor.execute(
-                        """
-                        CREATE INDEX IF NOT EXISTS idx_prediction_logs_request_id
-                        ON prediction_logs (request_id)
-                        """
-                    )
+            run_app_database_migrations(self._database_url)
             self._table_ready = True
 
 

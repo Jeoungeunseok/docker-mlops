@@ -11,6 +11,7 @@ from app.core.logging import app_logger
 from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.notifications import NotificationEvent, notification_dispatcher
 from app.domains.mlops.schemas import TrainingContext, TrainingJobRecord, TrainingResult
+from app.infra.migrations import run_app_database_migrations
 
 
 def retry_block_reason(record: TrainingJobRecord) -> str | None:
@@ -285,30 +286,7 @@ class PostgresTrainingJobStore:
         with self._lock:
             if self._table_ready:
                 return
-            with psycopg2.connect(self._database_url) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        CREATE TABLE IF NOT EXISTS training_jobs (
-                            job_id TEXT PRIMARY KEY,
-                            status TEXT NOT NULL,
-                            context JSONB NOT NULL,
-                            attempts INTEGER NOT NULL DEFAULT 0,
-                            max_attempts INTEGER NOT NULL DEFAULT 1,
-                            created_at TIMESTAMPTZ NOT NULL,
-                            started_at TIMESTAMPTZ,
-                            finished_at TIMESTAMPTZ,
-                            result JSONB,
-                            error_message TEXT
-                        )
-                        """
-                    )
-                    cursor.execute(
-                        """
-                        CREATE INDEX IF NOT EXISTS idx_training_jobs_status_created_at
-                        ON training_jobs (status, created_at DESC)
-                        """
-                    )
+            run_app_database_migrations(self._database_url)
             self._table_ready = True
 
     def _row_to_record(self, row: object) -> TrainingJobRecord:
