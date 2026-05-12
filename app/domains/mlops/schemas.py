@@ -171,6 +171,34 @@ class MlopsEventRecord(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class MlopsSchedulerTickRequest(BaseModel):
+    dry_run: bool = False
+    now: datetime | None = None
+
+
+class MlopsSchedulerTickResult(BaseModel):
+    dry_run: bool
+    checked_at: datetime
+    due_jobs: int
+    submitted_jobs: int = 0
+    failed_jobs: int = 0
+    preview_contexts: list[TrainingContext] = Field(default_factory=list)
+    jobs: list[MlopsSchedulerJobStatus] = Field(default_factory=list)
+
+
+class MlopsNotificationTestRequest(BaseModel):
+    event_type: str = "notification_test"
+    severity: str = "info"
+    message: str = "MLOps notification test."
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class MlopsNotificationTestResult(BaseModel):
+    event_type: str
+    severity: str
+    dispatched: bool
+
+
 class PredictionLogPayload(BaseModel):
     model_name: str
     model_version: str | None = None

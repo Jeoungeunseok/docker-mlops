@@ -9,7 +9,9 @@ from app.api.v1.endpoints import mlops
 from app.domains.mlops.schemas import (
     EvaluationMetrics,
     MlopsEventRecord,
+    MlopsNotificationTestRequest,
     MlopsSchedulerJobStatus,
+    MlopsSchedulerTickRequest,
     ModelRollbackResult,
     PredictionLogPayload,
     TrainingContext,
@@ -106,6 +108,84 @@ async def test_get_mlops_events_returns_recent_events(monkeypatch: Any) -> None:
     result = await mlops.get_mlops_events(limit=10, event_type="drift_detected")
 
     assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_tick_scheduler_returns_dry_run_contexts() -> None:
+    class DummyScheduler:
+        def dry_run(self, now: datetime | None = None) -> list[TrainingContext]:
+            assert now == datetime(2026, 1, 2, 12, 0, 0)
+            return [_context()]
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(training_scheduler=DummyScheduler())))
+
+    result = await mlops.tick_scheduler(
+        request,
+        MlopsSchedulerTickRequest(dry_run=True, now=datetime(2026, 1, 2, 12, 0, 0)),
+    )
+
+    assert result.dry_run
+    assert result.due_jobs == 1
+    assert result.submitted_jobs == 0
+    assert result.preview_contexts[0].model_type == "xgboost"
+
+
+@pytest.mark.asyncio
+async def test_tick_scheduler_runs_active_scheduler() -> None:
+    class DummyScheduler:
+        def tick(self, now: datetime | None = None) -> list[MlopsSchedulerJobStatus]:
+            assert now == datetime(2026, 1, 2, 12, 0, 0)
+            return [
+                MlopsSchedulerJobStatus(
+                    model_type="xgboost",
+                    target_type="global",
+                    next_run_at=datetime(2026, 1, 2, 13, 0, 0),
+                    last_submitted_job_id="job-1",
+                    last_submitted_at=now,
+                )
+            ]
+
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(training_scheduler=DummyScheduler())))
+
+    result = await mlops.tick_scheduler(
+        request,
+        MlopsSchedulerTickRequest(now=datetime(2026, 1, 2, 12, 0, 0)),
+    )
+
+    assert not result.dry_run
+    assert result.due_jobs == 1
+    assert result.submitted_jobs == 1
+    assert result.jobs[0].last_submitted_job_id == "job-1"
+
+
+@pytest.mark.asyncio
+async def test_tick_scheduler_returns_409_when_scheduler_is_not_active() -> None:
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
+    with pytest.raises(HTTPException) as exc:
+        await mlops.tick_scheduler(request, MlopsSchedulerTickRequest())
+
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_send_test_notification_dispatches_event(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(mlops.notification_dispatcher, "notify", lambda event: captured.setdefault("event", event))
+
+    result = await mlops.send_test_notification(
+        MlopsNotificationTestRequest(
+            event_type="notification_test",
+            severity="warning",
+            message="test",
+            payload={"source": "api"},
+        )
+    )
+
+    assert result.dispatched
+    assert result.event_type == "notification_test"
+    assert captured["event"].severity == "warning"
+    assert captured["event"].payload == {"source": "api"}
 
 
 @pytest.mark.asyncio

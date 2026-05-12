@@ -93,14 +93,35 @@ def test_scheduler_tick_submits_due_jobs_and_updates_next_run() -> None:
     scheduler = InProcessTrainingScheduler([job], submitter=submitter)
     current_time = datetime(2026, 1, 2, 12, 0, 0)
 
-    scheduler.tick(current_time)
+    submitted_states = scheduler.tick(current_time)
     scheduler.tick(current_time + timedelta(minutes=30))
 
     states = scheduler.states()
+    assert submitted_states[0].last_submitted_job_id == "job-1"
     assert len(submitter.submissions) == 1
     assert submitter.submissions[0][1] == 3
     assert states[0].last_submitted_job_id == "job-1"
     assert states[0].next_run_at == current_time + timedelta(seconds=3600)
+
+
+def test_scheduler_dry_run_returns_due_contexts_without_submitting() -> None:
+    submitter = CapturingSubmitter()
+    job = ScheduledTrainingJob(
+        model_type="xgboost",
+        interval_seconds=3600,
+        train_window_hours=24,
+        validation_window_hours=6,
+        run_on_start=True,
+    )
+    scheduler = InProcessTrainingScheduler([job], submitter=submitter)
+    current_time = datetime(2026, 1, 2, 12, 0, 0)
+
+    contexts = scheduler.dry_run(current_time)
+
+    assert len(contexts) == 1
+    assert contexts[0].model_type == "xgboost"
+    assert contexts[0].validation_end_at == current_time
+    assert submitter.submissions == []
 
 
 def test_scheduler_tick_notifies_when_job_is_submitted(monkeypatch) -> None:

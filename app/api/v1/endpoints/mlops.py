@@ -4,6 +4,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.core.config import settings
 from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
+from app.core.timezone import now_in_app_timezone
 from app.domains.mlops.config import mlops_settings
 from app.domains.mlops.event_store import mlops_event_store
 from app.domains.mlops.model_loader import model_loader
@@ -21,8 +22,12 @@ from app.domains.mlops.schemas import (
     MlopsDriftStatus,
     MlopsEventRecord,
     MlopsNotificationStatus,
+    MlopsNotificationTestRequest,
+    MlopsNotificationTestResult,
     MlopsRegistryStatus,
     MlopsSchedulerStatus,
+    MlopsSchedulerTickRequest,
+    MlopsSchedulerTickResult,
     MlopsStatus,
     MlopsStoreStatus,
     ModelLoadResult,
@@ -72,6 +77,50 @@ async def get_mlops_status(request: Request) -> MlopsStatus:
 @router.get("/events", response_model=list[MlopsEventRecord])
 async def get_mlops_events(limit: int = 100, event_type: str | None = None) -> list[MlopsEventRecord]:
     return await run_in_threadpool(mlops_event_store.list_recent, limit, event_type)
+
+
+@router.post("/scheduler/tick", response_model=MlopsSchedulerTickResult)
+async def tick_scheduler(request: Request, payload: MlopsSchedulerTickRequest) -> MlopsSchedulerTickResult:
+    scheduler = getattr(request.app.state, "training_scheduler", None)
+    if scheduler is None:
+        raise HTTPException(status_code=409, detail="Scheduled retraining scheduler is not active.")
+    checked_at = payload.now or now_in_app_timezone()
+    if payload.dry_run:
+        preview_contexts = await run_in_threadpool(scheduler.dry_run, checked_at)
+        return MlopsSchedulerTickResult(
+            dry_run=True,
+            checked_at=checked_at,
+            due_jobs=len(preview_contexts),
+            preview_contexts=preview_contexts,
+        )
+
+    submitted_states = await run_in_threadpool(scheduler.tick, checked_at)
+    failed_jobs = sum(1 for state in submitted_states if state.last_error_message is not None)
+    return MlopsSchedulerTickResult(
+        dry_run=False,
+        checked_at=checked_at,
+        due_jobs=len(submitted_states),
+        submitted_jobs=len(submitted_states) - failed_jobs,
+        failed_jobs=failed_jobs,
+        jobs=submitted_states,
+    )
+
+
+@router.post("/notifications/test", response_model=MlopsNotificationTestResult)
+async def send_test_notification(payload: MlopsNotificationTestRequest) -> MlopsNotificationTestResult:
+    notification_dispatcher.notify(
+        NotificationEvent(
+            event_type=payload.event_type,
+            severity=payload.severity,
+            message=payload.message,
+            payload=payload.payload,
+        )
+    )
+    return MlopsNotificationTestResult(
+        event_type=payload.event_type,
+        severity=payload.severity,
+        dispatched=True,
+    )
 
 
 @router.post("/training-jobs", response_model=TrainingResult)

@@ -79,14 +79,25 @@ class InProcessTrainingScheduler:
             self._thread = None
         app_logger.info("Scheduled retraining scheduler stopped")
 
-    def tick(self, now: datetime | None = None) -> None:
+    def tick(self, now: datetime | None = None) -> list[ScheduledTrainingJobState]:
         current_time = now or now_in_app_timezone()
+        submitted_states: list[ScheduledTrainingJobState] = []
         with self._lock:
             for index, job in enumerate(self._jobs):
                 state = self._states[index]
                 if current_time < state.next_run_at:
                     continue
-                self._submit_job(index, job, current_time)
+                submitted_states.append(self._submit_job(index, job, current_time))
+        return submitted_states
+
+    def dry_run(self, now: datetime | None = None) -> list[TrainingContext]:
+        current_time = now or now_in_app_timezone()
+        with self._lock:
+            return [
+                build_scheduled_training_context(job, current_time)
+                for job, state in zip(self._jobs, self._states)
+                if current_time >= state.next_run_at
+            ]
 
     def states(self) -> list[ScheduledTrainingJobState]:
         with self._lock:
@@ -96,7 +107,7 @@ class InProcessTrainingScheduler:
         while not self._stop_event.wait(self._poll_interval_seconds):
             self.tick()
 
-    def _submit_job(self, index: int, job: ScheduledTrainingJob, current_time: datetime) -> None:
+    def _submit_job(self, index: int, job: ScheduledTrainingJob, current_time: datetime) -> ScheduledTrainingJobState:
         try:
             context = build_scheduled_training_context(job, current_time)
             record = self._submitter.submit(context, max_attempts=job.max_attempts)
@@ -126,6 +137,7 @@ class InProcessTrainingScheduler:
                     },
                 )
             )
+            return self._states[index]
         except Exception as exc:
             self._states[index] = self._states[index].model_copy(
                 update={
@@ -148,6 +160,7 @@ class InProcessTrainingScheduler:
                 )
             )
             app_logger.exception("Failed to submit scheduled retraining job", extra={"model_type": job.model_type})
+            return self._states[index]
 
 
 def build_scheduled_training_context(job: ScheduledTrainingJob, current_time: datetime) -> TrainingContext:
