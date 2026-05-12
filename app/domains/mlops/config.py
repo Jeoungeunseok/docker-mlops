@@ -17,6 +17,10 @@ class MlopsSettings(BaseSettings):
     metric_for_promotion: str = Field(default="rmse", alias="MLOPS_METRIC_FOR_PROMOTION")
     enable_scheduled_retraining: bool = Field(default=False, alias="MLOPS_ENABLE_SCHEDULED_RETRAINING")
     scheduled_retraining_jobs: str = Field(default="[]", alias="MLOPS_SCHEDULED_RETRAINING_JOBS")
+    drift_min_samples: int = Field(default=30, alias="MLOPS_DRIFT_MIN_SAMPLES")
+    drift_max_mean_error_value: float | None = Field(default=None, alias="MLOPS_DRIFT_MAX_MEAN_ERROR_VALUE")
+    drift_metric_name: str = Field(default="mape", alias="MLOPS_DRIFT_METRIC_NAME")
+    drift_max_mean_metric_value: float | None = Field(default=None, alias="MLOPS_DRIFT_MAX_MEAN_METRIC_VALUE")
 
 
 @lru_cache

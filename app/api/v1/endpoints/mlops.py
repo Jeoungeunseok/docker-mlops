@@ -5,7 +5,9 @@ from app.core.logging import app_logger
 from app.core.exceptions import ModelNotLoadedError
 from app.domains.mlops.model_loader import model_loader
 from app.domains.mlops.model_registry import get_model_by_alias, rollback_champion
+from app.domains.mlops.drift import check_model_drift, default_drift_check_request
 from app.domains.mlops.schemas import (
+    DriftCheckResult,
     ModelLoadResult,
     ModelRegistryInfo,
     ModelRollbackRequest,
@@ -14,6 +16,7 @@ from app.domains.mlops.schemas import (
     TrainingJobRecord,
     TrainingResult,
 )
+from app.domains.prediction.log_store import prediction_log_store
 from app.domains.mlops.training_jobs import training_job_runner
 from app.jobs.train_model_job import train_model_job
 
@@ -123,3 +126,30 @@ async def rollback_model(model_name: str, request: ModelRollbackRequest) -> Mode
             extra={"model_name": model_name, "version": request.version},
         )
         raise HTTPException(status_code=502, detail=f"Failed to rollback model: {exc}") from exc
+
+
+@router.get("/models/{model_name}/drift", response_model=DriftCheckResult)
+async def get_model_drift(
+    model_name: str,
+    limit: int = 100,
+    min_samples: int | None = None,
+    max_mean_error_value: float | None = None,
+    metric_name: str | None = None,
+    max_mean_metric_value: float | None = None,
+) -> DriftCheckResult:
+    app_logger.info("Checking model drift", extra={"model_name": model_name})
+    try:
+        request = default_drift_check_request(
+            limit=limit,
+            min_samples=min_samples,
+            max_mean_error_value=max_mean_error_value,
+            metric_name=metric_name,
+            max_mean_metric_value=max_mean_metric_value,
+        )
+        logs = await run_in_threadpool(prediction_log_store.list_by_model, model_name)
+        return await run_in_threadpool(check_model_drift, model_name, logs, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        app_logger.exception("Model drift check failed", extra={"model_name": model_name})
+        raise HTTPException(status_code=502, detail=f"Failed to check model drift: {exc}") from exc

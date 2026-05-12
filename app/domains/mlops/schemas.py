@@ -90,6 +90,27 @@ class ModelRollbackResult(BaseModel):
     champion_version: str
 
 
+class DriftCheckRequest(BaseModel):
+    limit: int = Field(default=100, ge=1)
+    min_samples: int = Field(default=30, ge=1)
+    max_mean_error_value: float | None = None
+    metric_name: str = "mape"
+    max_mean_metric_value: float | None = None
+
+
+class DriftCheckResult(BaseModel):
+    model_name: str
+    drift_detected: bool
+    evaluated_samples: int
+    min_samples: int
+    mean_error_value: float | None = None
+    max_mean_error_value: float | None = None
+    metric_name: str
+    mean_metric_value: float | None = None
+    max_mean_metric_value: float | None = None
+    reason: str
+
+
 class PredictionLogPayload(BaseModel):
     model_name: str
     model_version: str | None = None

@@ -5,7 +5,14 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.v1.endpoints import mlops
-from app.domains.mlops.schemas import EvaluationMetrics, ModelRollbackResult, TrainingContext, TrainingJobRecord, TrainingResult
+from app.domains.mlops.schemas import (
+    EvaluationMetrics,
+    ModelRollbackResult,
+    PredictionLogPayload,
+    TrainingContext,
+    TrainingJobRecord,
+    TrainingResult,
+)
 
 
 @pytest.mark.asyncio
@@ -119,6 +126,36 @@ async def test_rollback_model_returns_result_and_reloads_champion(monkeypatch: A
     assert result == ModelRollbackResult(model_name="xgboost_global", champion_version="2")
     assert captured["rollback"] == ("xgboost_global", "2")
     assert captured["reload"] == ("xgboost_global", True)
+
+
+@pytest.mark.asyncio
+async def test_get_model_drift_returns_drift_result(monkeypatch: Any) -> None:
+    class DummyPredictionLogStore:
+        def list_by_model(self, model_name: str) -> list[PredictionLogPayload]:
+            assert model_name == "xgboost_global"
+            return [
+                PredictionLogPayload(
+                    model_name=model_name,
+                    predicted_at=datetime(2026, 1, 1, 12, 0, 0),
+                    target_timestamp=datetime(2026, 1, 1, 13, 0, 0),
+                    predicted_value=12.0,
+                    actual_value=10.0,
+                    error_value=2.0,
+                    error_metrics={"mape": 20.0},
+                )
+            ]
+
+    monkeypatch.setattr(mlops, "prediction_log_store", DummyPredictionLogStore())
+
+    result = await mlops.get_model_drift(
+        "xgboost_global",
+        min_samples=1,
+        max_mean_metric_value=15.0,
+    )
+
+    assert result.drift_detected
+    assert result.evaluated_samples == 1
+    assert result.mean_metric_value == 20.0
 
 
 def _context(model_type: str = "xgboost") -> TrainingContext:
